@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,8 @@ import (
 
 func TestProxyVideoHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	mediaDir := prepareProxyVideoMediaDir(t)
+	t.Setenv("PROXY_VIDEO_DIR", mediaDir)
 
 	t.Run("missing tenant", func(t *testing.T) {
 		router := gin.New()
@@ -91,9 +94,6 @@ func TestProxyVideoHandler(t *testing.T) {
 		previous := queue.SetProxyVideoQueue(queueChan)
 		defer queue.SetProxyVideoQueue(previous)
 
-		tempDir := t.TempDir()
-		t.Setenv("PROXY_VIDEO_DIR", tempDir)
-
 		router := gin.New()
 		router.POST("/proxy", func(c *gin.Context) {
 			c.Set(middleware.TenantIDContextKey, uuid.New())
@@ -114,9 +114,6 @@ func TestProxyVideoHandler(t *testing.T) {
 		queueChan := make(chan queue.ProxyVideoMessage, 1)
 		previous := queue.SetProxyVideoQueue(queueChan)
 		defer queue.SetProxyVideoQueue(previous)
-
-		tempDir := t.TempDir()
-		t.Setenv("PROXY_VIDEO_DIR", tempDir)
 
 		tenantID := uuid.New()
 		router := gin.New()
@@ -153,6 +150,22 @@ func TestProxyVideoHandler(t *testing.T) {
 			t.Fatalf("expected message to be published")
 		}
 	})
+}
+
+func prepareProxyVideoMediaDir(t *testing.T) string {
+	t.Helper()
+
+	rootDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to determine working directory: %v", err)
+	}
+	mediaDir := filepath.Join(rootDir, "media")
+
+	t.Cleanup(func() {
+		_ = os.RemoveAll(mediaDir)
+	})
+
+	return mediaDir
 }
 
 func newMultipartRequest(t *testing.T, fields map[string]string, fileField, fileName, fileData string) (*bytes.Buffer, string) {

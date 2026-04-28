@@ -16,6 +16,10 @@ type ProxyVideoMessage struct {
 	FilePath  string
 	StreamID  string
 	Timestamp time.Time
+
+	StorageBackend string
+	Bucket         string
+	ObjectKey      string
 }
 
 var (

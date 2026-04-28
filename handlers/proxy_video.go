@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/sixpatrol/sixpatrol-server/env"
 	"github.com/sixpatrol/sixpatrol-server/middleware"
 	"github.com/sixpatrol/sixpatrol-server/queue"
 )
@@ -57,28 +55,23 @@ func ProxyVideoHandler() gin.HandlerFunc {
 			return
 		}
 
-		storageDir := env.Get("PROXY_VIDEO_DIR", "tmp/proxy-video")
-		if err := os.MkdirAll(storageDir, 0o755); err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare storage"})
-			return
-		}
-
-		safeStreamID := sanitizeSegment(streamID)
-		fileName := fmt.Sprintf("%s_%s%s", safeStreamID, uuid.New().String(), ext)
-		destPath := filepath.Join(storageDir, fileName)
-		if err := saveUploadedFile(fileHeader, destPath); err != nil {
+		stored, err := storeProxyVideo(c.Request.Context(), fileHeader, streamID, ext)
+		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to store video chunk"})
 			return
 		}
 
 		msg := queue.ProxyVideoMessage{
-			TenantID:  tenantID,
-			FilePath:  destPath,
-			StreamID:  streamID,
-			Timestamp: time.Unix(timestampValue, 0).UTC(),
+			TenantID:       tenantID,
+			FilePath:       stored.LocalPath,
+			StorageBackend: stored.Backend,
+			Bucket:         stored.Bucket,
+			ObjectKey:      stored.ObjectKey,
+			StreamID:       streamID,
+			Timestamp:      time.Unix(timestampValue, 0).UTC(),
 		}
 		if err := queue.PublishProxyVideo(msg); err != nil {
-			_ = os.Remove(destPath)
+			_ = deleteStoredProxyVideo(c.Request.Context(), stored)
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "queue unavailable"})
 			return
 		}
